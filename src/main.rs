@@ -112,6 +112,18 @@ impl EventHandler for Handler {
                 }
                 send_msg(&text, &msg, &ctx);
             }
+            "embed" => {
+                msg.channel_id
+                    .send_message(&ctx, |m| {
+                        m.embed(|e| {
+                            e.title("andrzej duda");
+                            e.description("is fucking gay");
+                            e.footer(|f| f.text("lolz"));
+                            e
+                        })
+                    })
+                    .unwrap();
+            }
             _ if msg.content.starts_with("!set ") => {
                 let body = &msg.content["!set ".len()..];
                 set(&ctx, &msg, body);
