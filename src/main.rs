@@ -2,9 +2,6 @@ use std::{env, collections::HashMap};
 use serenity::client::Client;
 use serenity::model::{channel::Message, gateway::Ready, id::UserId};
 use serenity::prelude::{EventHandler, Context};
-use serenity::framework::standard::{
-    StandardFramework,
-};
 use serenity::prelude::*;
 
 struct LastMessage;
@@ -36,11 +33,18 @@ impl EventHandler for Handler {
 
         println!("got message {}", msg.content);
 
+        let simple_responses = vec![
+            ("karakan", "jebany kaczyński"), ("kraj z gówna", "ta kurwa polska")
+        ];
+        for resp in simple_responses {
+            if msg.content.contains(resp.0) {
+                send_msg(resp.1, &msg, &ctx);
+            }
+        }
+
         {
             let mut data = ctx.data.write();
             match msg.content.as_str() {
-                "karakan" => send_msg("jebany kaczyński", &msg, &ctx),
-                "kraj z gówna" => send_msg("ta kurwa Polska", &msg, &ctx),
                 "!prev" => {
                     let prev_content = data.get::<LastMessage>().unwrap().as_ref().unwrap().content.clone();
                     let m = format!("previous message was: {}", prev_content);
@@ -53,10 +57,6 @@ impl EventHandler for Handler {
                     let prev = data.get::<LastMessage>().unwrap().as_ref().unwrap();
                     let m = format!("{} is now more based", prev.author.name);
                     send_msg(&m, &msg, &ctx);
-                }
-                "!basedstats" => {
-                    let based_stats = data.get::<BasedStats>().unwrap();
-                    // based_stats.iter().map(|u|)
                 }
                 _ => () 
             };
