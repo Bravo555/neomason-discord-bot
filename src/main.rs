@@ -46,10 +46,18 @@ impl EventHandler for Handler {
             let mut data = ctx.data.write();
             match msg.content.as_str() {
                 "based" => {
+                    let prev_id = data
+                        .get::<LastMessage>()
+                        .unwrap()
+                        .as_ref()
+                        .map(|msg| msg.author.id.clone());
                     let based_map = data.get_mut::<BasedStats>().unwrap();
-                    let entry = based_map.entry(msg.author.id).or_insert(0);
+                    if let Some(prev_id) = prev_id {
+                        let entry = based_map.entry(prev_id).or_insert(0);
                     *entry += 1;
-                    let prev = data.get::<LastMessage>().unwrap().as_ref().unwrap();
+                    }
+                    let prev = data.get::<LastMessage>().unwrap();
+                    if let Some(prev) = prev {
                     let m = format!(
                         "{} is now more based",
                         prev.author_nick(&ctx.http)
@@ -57,7 +65,7 @@ impl EventHandler for Handler {
                     );
                     send_msg(&m, &msg, &ctx);
                 }
-                _ => () 
+                }
             };
         }
     }
