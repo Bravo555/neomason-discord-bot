@@ -21,31 +21,32 @@ impl TypeMapKey for DbContainer {
     type Value = Arc<Mutex<db::Connection>>;
 }
 
+struct SimpleResponses;
+
+impl TypeMapKey for SimpleResponses {
+    type Value = Vec<(String, String)>;
+}
+
 struct Handler;
 
 impl EventHandler for Handler {
     fn message(&self, ctx: Context, msg: Message) {
         // TODO: have it ignore all the bots, not only itself
         // probably should use the serenity framework thingy
-        if msg.author.id == 722854871174479892 {
+        if msg.author.id == ctx.cache.read().user.id {
             return;
         }
 
-        if msg.content != "!prev" && msg.content != "based" {
-            let mut data = ctx.data.write();
-            let last_msg = data.get_mut::<LastMessage>().unwrap();
-            last_msg.replace(msg.clone());
-        }
+        println!("got message {:#?}", msg);
 
-        println!("got message {}", msg.content);
-
-        let simple_responses = vec![
-            ("karakan", "jebany kaczyński"),
-            ("kraj z gówna", "ta kurwa polska"),
-        ];
-        for resp in simple_responses {
-            if msg.content.contains(resp.0) {
-                send_msg(resp.1, &msg, &ctx);
+        {
+            let data = ctx.data.read();
+            let simple_responses = data.get::<SimpleResponses>().unwrap();
+            for (keyword, response) in simple_responses {
+                if msg.content.contains(keyword) {
+                    println!("sending response: {}", response);
+                    send_msg(response, &msg, &ctx);
+                }
             }
         }
 
@@ -111,6 +112,15 @@ impl EventHandler for Handler {
                 }
                 send_msg(&text, &msg, &ctx);
             }
+            _ if msg.content.starts_with("!set ") => {
+                let body = &msg.content["!set ".len()..];
+                set(&ctx, &msg, body);
+            }
+            _ if !msg.content.starts_with("!") => {
+                let mut data = ctx.data.write();
+                let last_msg = data.get_mut::<LastMessage>().unwrap();
+                last_msg.replace(msg.clone());
+            }
             _ => (),
         };
     }
@@ -135,12 +145,33 @@ fn main() {
     )
     .unwrap();
 
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS responses (
+            keyword     TEXT PRIMARY KEY NOT NULL,
+            response    TEXT NOT NULL
+        )",
+        NO_PARAMS,
+    )
+    .unwrap();
+
+    let responses: Vec<(String, String)> = {
+        let mut responses_query = db.prepare("SELECT * FROM responses").unwrap();
+        responses_query
+            .query_map(NO_PARAMS, |row| {
+                Ok((row.get(0).unwrap(), row.get(1).unwrap()))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
+    };
+    println!("{:?}", responses);
+
     let mut client = Client::new(&token, Handler).expect("error creating client");
-    println!("{:?}", client.cache_and_http.cache.read().users);
 
     {
         let mut data = client.data.write();
         data.insert::<DbContainer>(Arc::new(Mutex::new(db)));
+        data.insert::<SimpleResponses>(responses);
         data.insert::<LastMessage>(None);
     }
 
@@ -153,4 +184,57 @@ fn send_msg(text: &str, msg: &Message, ctx: &Context) {
     if let Err(e) = msg.channel_id.say(&ctx, text) {
         println!("cant send message: {}", e);
     }
+}
+
+fn set(ctx: &Context, msg: &Message, body: &str) {
+    let send_msg = |text| send_msg(text, &msg, &ctx);
+
+    if body.starts_with("\"") {
+        // keyword enclosed with quotation marks
+        send_msg("Error: multiple word keywords not yet supported");
+        return;
+    } else {
+        // just split by whitespace
+        let mut words = body.split_whitespace();
+        let keyword = words.next();
+        if let None = keyword {
+            send_msg("Error: no keyword\nSyntax: `!set \"some keywords\" a response");
+            return;
+        };
+
+        let keyword = keyword.unwrap();
+        {
+            let data = ctx.data.read();
+            let responses = data.get::<SimpleResponses>().unwrap();
+            if responses.iter().any(|(key, _r)| key == keyword) {
+                send_msg("Error: already exists");
+                return;
+            }
+        }
+        let response = words.collect::<Vec<&str>>().join(" ");
+        if response.len() < 1 {
+            send_msg("Error: no response\nSyntax: `!set \"some keywords\" a response");
+            return;
+        }
+
+        println!("before db\nkeyword: {}\nresponse: {}", keyword, response);
+        add_response(&ctx, keyword, &response);
+
+        send_msg(&format!("{} => {} - successfully set", &keyword, &response))
+    }
+}
+
+fn add_response(ctx: &Context, keyword: &str, response: &str) {
+    let mut data = ctx.data.write();
+    {
+        let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
+        db.execute(
+            "INSERT INTO responses (keyword, response) VALUES (?1, ?2)",
+            params![keyword, response],
+        )
+        .unwrap();
+    }
+
+    let responses = data.get_mut::<SimpleResponses>().unwrap();
+    responses.push((keyword.to_string(), response.to_string()));
 }
