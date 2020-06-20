@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 serenity = "0.8.6"
+rusqlite = "0.23.1"
+dotenv = "0.15.0"

@@ -1,8 +1,15 @@
-use std::{env, collections::HashMap};
+use dotenv::dotenv;
+use rusqlite as db;
+use rusqlite::{params, NO_PARAMS};
 use serenity::client::Client;
 use serenity::model::{channel::Message, gateway::Ready, id::UserId};
-use serenity::prelude::{EventHandler, Context};
 use serenity::prelude::*;
+use serenity::prelude::{Context, EventHandler};
+use std::{
+    collections::HashMap,
+    env,
+    sync::{Arc, Mutex},
+};
 
 struct LastMessage;
 
@@ -10,17 +17,18 @@ impl TypeMapKey for LastMessage {
     type Value = Option<Message>;
 }
 
-/// Keep each user's "based" score (how based they are)
-struct BasedStats;
+struct DbContainer;
 
-impl TypeMapKey for BasedStats {
-    type Value = HashMap<UserId, u32>;
+impl TypeMapKey for DbContainer {
+    type Value = Arc<Mutex<db::Connection>>;
 }
 
 struct Handler;
 
 impl EventHandler for Handler {
     fn message(&self, ctx: Context, msg: Message) {
+        // TODO: have it ignore all the bots, not only itself
+        // probably should use the serenity framework thingy
         if msg.author.id == 722854871174479892 {
             return;
         }
@@ -34,7 +42,8 @@ impl EventHandler for Handler {
         println!("got message {}", msg.content);
 
         let simple_responses = vec![
-            ("karakan", "jebany kaczyński"), ("kraj z gówna", "ta kurwa polska")
+            ("karakan", "jebany kaczyński"),
+            ("kraj z gówna", "ta kurwa polska"),
         ];
         for resp in simple_responses {
             if msg.content.contains(resp.0) {
@@ -42,22 +51,32 @@ impl EventHandler for Handler {
             }
         }
 
-        {
-            let mut data = ctx.data.write();
-            match msg.content.as_str() {
-                "based" => {
-                    let prev_id = data
-                        .get::<LastMessage>()
-                        .unwrap()
-                        .as_ref()
-                        .map(|msg| msg.author.id.clone());
-                    let based_map = data.get_mut::<BasedStats>().unwrap();
-                    if let Some(prev_id) = prev_id {
-                        let entry = based_map.entry(prev_id).or_insert(0);
-                    *entry += 1;
-                    }
-                    let prev = data.get::<LastMessage>().unwrap();
-                    if let Some(prev) = prev {
+        match msg.content.as_str() {
+            "based" => {
+                let mut data = ctx.data.write();
+                let prev_id = data
+                    .get::<LastMessage>()
+                    .unwrap()
+                    .as_ref()
+                    .map(|msg| msg.author.id.clone())
+                    .unwrap();
+
+                {
+                    let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
+                    db.execute(
+                        "INSERT OR IGNORE INTO users (id, based) VALUES (?1, ?2)",
+                        params![*prev_id.as_u64() as i64, 0],
+                    )
+                    .unwrap();
+                    db.execute(
+                        "UPDATE users SET based = based + 1 WHERE id = (?1)",
+                        params![*prev_id.as_u64() as i64],
+                    )
+                    .unwrap();
+                }
+
+                let prev = data.get::<LastMessage>().unwrap();
+                if let Some(prev) = prev {
                     let m = format!(
                         "{} is now more based",
                         prev.author_nick(&ctx.http)
@@ -65,9 +84,40 @@ impl EventHandler for Handler {
                     );
                     send_msg(&m, &msg, &ctx);
                 }
+            }
+            "!basedstats" => {
+                let data = ctx.data.read();
+                let db = data.get::<DbContainer>().unwrap().lock().unwrap();
+
+                let mut stmt = db.prepare("SELECT id, based FROM users").unwrap();
+                let users = stmt
+                    .query_map(NO_PARAMS, |row| {
+                        let id: i64 = row.get(0).unwrap();
+                        let based: i64 = row.get(1).unwrap();
+
+                        Ok((id, based))
+                    })
+                    .unwrap();
+
+                let mut text = String::from("Based stats:\n");
+                for user in users {
+                    let user = user.unwrap();
+                    let based = user.1;
+
+                    let userid: UserId = (user.0 as u64).into();
+                    let user = userid.to_user(&ctx.http).unwrap();
+                    let user_txt = format!(
+                        "{}: {}\n",
+                        user.nick_in(&ctx.http, &msg.guild_id.unwrap())
+                            .unwrap_or(user.name),
+                        based.to_string()
+                    );
+                    text.push_str(&user_txt);
                 }
-            };
-        }
+                send_msg(&text, &msg, &ctx);
+            }
+            _ => (),
+        };
     }
 
     fn ready(&self, _: Context, ready: Ready) {
@@ -76,16 +126,31 @@ impl EventHandler for Handler {
 }
 
 fn main() {
-    let mut client = Client::new(&env::var("DISCORD_TOKEN").expect("token"), Handler)
-        .expect("error creating client");
+    dotenv().ok();
+    let token = env::var("DISCORD_TOKEN").expect("discord token missing");
+    let db_name = env::var("DB_NAME").expect("db name missing");
+
+    let db = db::Connection::open(db_name).unwrap();
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS users (
+                  id              INTEGER PRIMARY KEY,
+                  based           INTEGER NOT NULL
+                  )",
+        params![],
+    )
+    .unwrap();
+
+    let mut client = Client::new(&token, Handler).expect("error creating client");
 
     {
         let mut data = client.data.write();
+        data.insert::<DbContainer>(Arc::new(Mutex::new(db)));
         data.insert::<LastMessage>(None);
-        data.insert::<BasedStats>(HashMap::default());
     }
 
-    client.start().expect("error occurred while starting the client");
+    client
+        .start()
+        .expect("error occurred while starting the client");
 }
 
 fn send_msg(text: &str, msg: &Message, ctx: &Context) {
