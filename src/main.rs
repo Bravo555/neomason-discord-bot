@@ -45,11 +45,6 @@ impl EventHandler for Handler {
         {
             let mut data = ctx.data.write();
             match msg.content.as_str() {
-                "!prev" => {
-                    let prev_content = data.get::<LastMessage>().unwrap().as_ref().unwrap().content.clone();
-                    let m = format!("previous message was: {}", prev_content);
-                    send_msg(&m, &msg, &ctx);
-                },
                 "based" => {
                     let based_map = data.get_mut::<BasedStats>().unwrap();
                     let entry = based_map.entry(msg.author.id).or_insert(0);
