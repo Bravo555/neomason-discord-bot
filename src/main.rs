@@ -55,7 +55,11 @@ impl EventHandler for Handler {
                     let entry = based_map.entry(msg.author.id).or_insert(0);
                     *entry += 1;
                     let prev = data.get::<LastMessage>().unwrap().as_ref().unwrap();
-                    let m = format!("{} is now more based", prev.author.name);
+                    let m = format!(
+                        "{} is now more based",
+                        prev.author_nick(&ctx.http)
+                            .unwrap_or(prev.author.name.clone())
+                    );
                     send_msg(&m, &msg, &ctx);
                 }
                 _ => () 
