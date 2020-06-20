@@ -37,7 +37,7 @@ impl EventHandler for Handler {
             return;
         }
 
-        println!("got message {:#?}", msg);
+        println!("got message {}", msg.content);
 
         {
             let data = ctx.data.read();
@@ -111,6 +111,23 @@ impl EventHandler for Handler {
                     text.push_str(&user_txt);
                 }
                 send_msg(&text, &msg, &ctx);
+            }
+            "!list" => {
+                let data = ctx.data.read();
+                let responses = data.get::<SimpleResponses>().unwrap();
+
+                msg.channel_id
+                    .send_message(&ctx, |f| {
+                        f.embed(|e| {
+                            let description = responses
+                                .iter()
+                                .map(|(key, resp)| format!("{} => {}", key, resp))
+                                .collect::<Vec<String>>()
+                                .join("\n");
+                            e.description(description)
+                        })
+                    })
+                    .unwrap();
             }
             _ if msg.content.starts_with("!set ") => {
                 let body = &msg.content["!set ".len()..];
