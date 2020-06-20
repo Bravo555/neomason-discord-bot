@@ -4,9 +4,7 @@ use rusqlite::{params, NO_PARAMS};
 use serenity::client::Client;
 use serenity::model::{channel::Message, gateway::Ready, id::UserId};
 use serenity::prelude::*;
-use serenity::prelude::{Context, EventHandler};
 use std::{
-    collections::HashMap,
     env,
     sync::{Arc, Mutex},
 };
@@ -79,8 +77,7 @@ impl EventHandler for Handler {
                 if let Some(prev) = prev {
                     let m = format!(
                         "{} is now more based",
-                        prev.author_nick(&ctx.http)
-                            .unwrap_or(prev.author.name.clone())
+                        prev.author_nick(&ctx).unwrap_or(prev.author.name.clone())
                     );
                     send_msg(&m, &msg, &ctx);
                 }
@@ -105,13 +102,11 @@ impl EventHandler for Handler {
                     let based = user.1;
 
                     let userid: UserId = (user.0 as u64).into();
-                    let user = userid.to_user(&ctx.http).unwrap();
-                    let user_txt = format!(
-                        "{}: {}\n",
-                        user.nick_in(&ctx.http, &msg.guild_id.unwrap())
-                            .unwrap_or(user.name),
-                        based.to_string()
-                    );
+                    let user = userid.to_user(&ctx).unwrap();
+                    let username = user
+                        .nick_in(&ctx, &msg.guild_id.unwrap())
+                        .unwrap_or(user.name);
+                    let user_txt = format!("{}: {}\n", username, based.to_string());
                     text.push_str(&user_txt);
                 }
                 send_msg(&text, &msg, &ctx);
@@ -141,6 +136,7 @@ fn main() {
     .unwrap();
 
     let mut client = Client::new(&token, Handler).expect("error creating client");
+    println!("{:?}", client.cache_and_http.cache.read().users);
 
     {
         let mut data = client.data.write();
@@ -154,7 +150,7 @@ fn main() {
 }
 
 fn send_msg(text: &str, msg: &Message, ctx: &Context) {
-    if let Err(e) = msg.channel_id.say(&ctx.http, text) {
+    if let Err(e) = msg.channel_id.say(&ctx, text) {
         println!("cant send message: {}", e);
     }
 }
