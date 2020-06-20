@@ -60,6 +60,11 @@ impl EventHandler for Handler {
                     .map(|msg| msg.author.id.clone())
                     .unwrap();
 
+                if prev_id == msg.author.id {
+                    send_msg("You can't increase your own based score!", &msg, &ctx);
+                    return;
+                }
+
                 {
                     let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
                     db.execute(
@@ -87,7 +92,9 @@ impl EventHandler for Handler {
                 let data = ctx.data.read();
                 let db = data.get::<DbContainer>().unwrap().lock().unwrap();
 
-                let mut stmt = db.prepare("SELECT id, based FROM users").unwrap();
+                let mut stmt = db
+                    .prepare("SELECT id, based FROM users ORDER BY based DESC")
+                    .unwrap();
                 let users = stmt
                     .query_map(NO_PARAMS, |row| {
                         let id: i64 = row.get(0).unwrap();
