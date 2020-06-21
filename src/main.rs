@@ -42,8 +42,9 @@ impl EventHandler for Handler {
         {
             let data = ctx.data.read();
             let simple_responses = data.get::<SimpleResponses>().unwrap();
+            let message = msg.content.to_lowercase();
             for (keyword, response) in simple_responses {
-                if msg.content.contains(keyword) {
+                if message.contains(keyword) {
                     println!("sending response: {}", response);
                     send_msg(response, &msg, &ctx);
                 }
