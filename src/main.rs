@@ -1,14 +1,23 @@
 use dotenv::dotenv;
+use env_logger;
 use fancy_regex::Regex;
+use log::*;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
 use serenity::client::Client;
-use serenity::model::{channel::Message, gateway::Ready, id::UserId};
+use serenity::model::{
+    channel::Message,
+    gateway::Ready,
+    id::{GuildId, UserId},
+};
 use serenity::prelude::*;
 use std::{
+    convert::TryInto,
     env,
     sync::{Arc, Mutex},
 };
+
+type SimpleResponse = (Regex, String, u64);
 
 struct LastMessage;
 
@@ -25,7 +34,12 @@ impl TypeMapKey for DbContainer {
 struct SimpleResponses;
 
 impl TypeMapKey for SimpleResponses {
-    type Value = Vec<(Regex, String)>;
+    type Value = Vec<SimpleResponse>;
+}
+
+mod migrations {
+    use refinery::embed_migrations;
+    embed_migrations!("migrations");
 }
 
 struct Handler;
@@ -44,8 +58,9 @@ impl EventHandler for Handler {
             let data = ctx.data.read();
             let simple_responses = data.get::<SimpleResponses>().unwrap();
             let message = msg.content.to_lowercase();
-            for (keyword, response) in simple_responses {
-                if keyword.is_match(&message).unwrap() {
+            for (keyword, response, guildid) in simple_responses {
+                if keyword.is_match(&message).unwrap() && msg.guild_id.unwrap().as_u64() == guildid
+                {
                     println!("sending response: {}", response);
                     send_msg(response, &msg, &ctx);
                 }
@@ -69,16 +84,18 @@ impl EventHandler for Handler {
 
                 {
                     let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
+                    let guildid = msg.guild_id.unwrap();
                     db.execute(
-                        "INSERT OR IGNORE INTO users (id, based) VALUES (?1, ?2)",
-                        params![*prev_id.as_u64() as i64, 0],
+                        "INSERT INTO users (userid, guildid, based) VALUES (?1, ?2, ?3)
+                        ON CONFLICT(userid, guildid) DO UPDATE SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
+                        params![i64::from(prev_id), i64::from(guildid), 0],
                     )
                     .unwrap();
-                    db.execute(
-                        "UPDATE users SET based = based + 1 WHERE id = (?1)",
-                        params![*prev_id.as_u64() as i64],
-                    )
-                    .unwrap();
+                    // db.execute(
+                    //     "UPDATE users SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
+                    //     params![i64::from(prev_id), i64::from(guildid)],
+                    // )
+                    // .unwrap();
                 }
 
                 let prev = data.get::<LastMessage>().unwrap();
@@ -95,10 +112,12 @@ impl EventHandler for Handler {
                 let db = data.get::<DbContainer>().unwrap().lock().unwrap();
 
                 let mut stmt = db
-                    .prepare("SELECT id, based FROM users ORDER BY based DESC")
+                    .prepare(
+                        "SELECT userid, based FROM users WHERE guildid = (?1) ORDER BY based DESC",
+                    )
                     .unwrap();
                 let users = stmt
-                    .query_map(NO_PARAMS, |row| {
+                    .query_map(params![i64::from(msg.guild_id.unwrap())], |row| {
                         let id: i64 = row.get(0).unwrap();
                         let based: i64 = row.get(1).unwrap();
 
@@ -122,6 +141,7 @@ impl EventHandler for Handler {
                 send_msg(&text, &msg, &ctx);
             }
             "!list" => {
+                // TODO: say something when the list is empty instead of displaying awkward black box
                 let data = ctx.data.read();
                 let responses = data.get::<SimpleResponses>().unwrap();
 
@@ -130,7 +150,8 @@ impl EventHandler for Handler {
                         f.embed(|e| {
                             let description = responses
                                 .iter()
-                                .map(|(key, resp)| format!("{} => {}", key.as_str(), resp))
+                                .filter(|(_, _, guildid)| msg.guild_id.unwrap().as_u64() == guildid)
+                                .map(|(key, resp, _)| format!("{} => {}", key.as_str(), resp))
                                 .collect::<Vec<String>>()
                                 .join("\n");
                             e.description(description)
@@ -140,7 +161,8 @@ impl EventHandler for Handler {
             }
             _ if msg.content.starts_with("!set ") => {
                 let body = &msg.content["!set ".len()..];
-                set(&ctx, &msg, body);
+                let guildid = msg.guild_id.unwrap();
+                set(&ctx, &msg, body, guildid);
             }
             _ if !msg.content.starts_with("!") => {
                 let mut data = ctx.data.write();
@@ -152,45 +174,32 @@ impl EventHandler for Handler {
     }
 
     fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
     }
 }
 
 fn main() {
+    env_logger::init();
     dotenv().ok();
+
     let token = env::var("DISCORD_TOKEN").expect("discord token missing");
     let db_name = env::var("DB_NAME").expect("db name missing");
 
-    let db = db::Connection::open(db_name).unwrap();
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS users (
-                  id              INTEGER PRIMARY KEY,
-                  based           INTEGER NOT NULL
-                  )",
-        params![],
-    )
-    .unwrap();
+    let mut db = db::Connection::open(db_name).unwrap();
+    migrations::migrations::runner().run(&mut db).unwrap();
 
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS responses (
-            keyword     TEXT PRIMARY KEY NOT NULL,
-            response    TEXT NOT NULL
-        )",
-        NO_PARAMS,
-    )
-    .unwrap();
-
-    let responses: Vec<(Regex, String)> = {
+    let responses: Vec<SimpleResponse> = {
         let mut responses_query = db.prepare("SELECT * FROM responses").unwrap();
         responses_query
             .query_map(NO_PARAMS, |row| {
                 Ok((
                     row.get::<usize, String>(0).unwrap(),
                     row.get::<usize, String>(1).unwrap(),
+                    row.get::<usize, i64>(2).unwrap().try_into().unwrap(),
                 ))
             })
             .unwrap()
-            .map(|response| response.map(|(k, r)| (Regex::new(&k).unwrap(), r)))
+            .map(|response| response.map(|(k, r, id)| (Regex::new(&k).unwrap(), r, id)))
             .filter_map(|r| r.ok())
             .collect()
     };
@@ -216,7 +225,7 @@ fn send_msg(text: &str, msg: &Message, ctx: &Context) {
     }
 }
 
-fn set(ctx: &Context, msg: &Message, body: &str) {
+fn set(ctx: &Context, msg: &Message, body: &str, guildid: GuildId) {
     let send_msg = |text| send_msg(text, &msg, &ctx);
 
     let (keyword, i) = if body.starts_with("\"") {
@@ -238,34 +247,37 @@ fn set(ctx: &Context, msg: &Message, body: &str) {
 
         (keyword, keyword.len() + 1)
     };
-    println!("{}", &body[i..]);
     {
         let data = ctx.data.read();
         let responses = data.get::<SimpleResponses>().unwrap();
-        if responses.iter().any(|(key, _r)| key.as_str() == keyword) {
+        if responses.iter().any(|(key, _r, current_guildid)| {
+            key.as_str() == keyword && guildid.as_u64() == current_guildid
+        }) {
             send_msg("Error: already exists");
             return;
         }
     }
     let response = &body[i..].to_string();
 
-    println!("before db\nkeyword: {}\nresponse: {}", keyword, response);
-    add_response(&ctx, keyword, &response);
-
+    add_response(&ctx, keyword, &response, guildid);
     send_msg(&format!("{} => {} - successfully set", &keyword, &response))
 }
 
-fn add_response(ctx: &Context, keyword: &str, response: &str) {
+fn add_response(ctx: &Context, keyword: &str, response: &str, guildid: GuildId) {
     let mut data = ctx.data.write();
     {
         let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
         db.execute(
-            "INSERT INTO responses (keyword, response) VALUES (?1, ?2)",
-            params![keyword, response],
+            "INSERT INTO responses (keyword, response, guildid) VALUES (?1, ?2, ?3)",
+            params![keyword, response, i64::from(guildid)],
         )
         .unwrap();
     }
 
     let responses = data.get_mut::<SimpleResponses>().unwrap();
-    responses.push((Regex::new(keyword).unwrap(), response.to_string()));
+    responses.push((
+        Regex::new(keyword).unwrap(),
+        response.to_string(),
+        guildid.into(),
+    ));
 }
