@@ -1,4 +1,5 @@
 use dotenv::dotenv;
+use fancy_regex::Regex;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
 use serenity::client::Client;
@@ -24,7 +25,7 @@ impl TypeMapKey for DbContainer {
 struct SimpleResponses;
 
 impl TypeMapKey for SimpleResponses {
-    type Value = Vec<(String, String)>;
+    type Value = Vec<(Regex, String)>;
 }
 
 struct Handler;
@@ -44,7 +45,7 @@ impl EventHandler for Handler {
             let simple_responses = data.get::<SimpleResponses>().unwrap();
             let message = msg.content.to_lowercase();
             for (keyword, response) in simple_responses {
-                if message.contains(keyword) {
+                if keyword.is_match(&message).unwrap() {
                     println!("sending response: {}", response);
                     send_msg(response, &msg, &ctx);
                 }
@@ -129,7 +130,7 @@ impl EventHandler for Handler {
                         f.embed(|e| {
                             let description = responses
                                 .iter()
-                                .map(|(key, resp)| format!("{} => {}", key, resp))
+                                .map(|(key, resp)| format!("{} => {}", key.as_str(), resp))
                                 .collect::<Vec<String>>()
                                 .join("\n");
                             e.description(description)
@@ -179,13 +180,17 @@ fn main() {
     )
     .unwrap();
 
-    let responses: Vec<(String, String)> = {
+    let responses: Vec<(Regex, String)> = {
         let mut responses_query = db.prepare("SELECT * FROM responses").unwrap();
         responses_query
             .query_map(NO_PARAMS, |row| {
-                Ok((row.get(0).unwrap(), row.get(1).unwrap()))
+                Ok((
+                    row.get::<usize, String>(0).unwrap(),
+                    row.get::<usize, String>(1).unwrap(),
+                ))
             })
             .unwrap()
+            .map(|response| response.map(|(k, r)| (Regex::new(&k).unwrap(), r)))
             .filter_map(|r| r.ok())
             .collect()
     };
@@ -214,39 +219,40 @@ fn send_msg(text: &str, msg: &Message, ctx: &Context) {
 fn set(ctx: &Context, msg: &Message, body: &str) {
     let send_msg = |text| send_msg(text, &msg, &ctx);
 
-    if body.starts_with("\"") {
+    let keyword = if body.starts_with("\"") {
         // keyword enclosed with quotation marks
-        send_msg("Error: multiple word keywords not yet supported");
-        return;
+        let reg = Regex::new("^\"(.*)\"").unwrap();
+        let captures = reg.captures(body).unwrap().unwrap();
+        let keyword = captures.get(1).unwrap();
+
+        keyword.as_str()
     } else {
-        // just split by whitespace
         let mut words = body.split_whitespace();
+        // just split by whitespace
         let keyword = words.next();
         if let None = keyword {
             send_msg("Error: no keyword\nSyntax: `!set \"some keywords\" a response");
             return;
         };
 
-        let keyword = keyword.unwrap();
-        {
-            let data = ctx.data.read();
-            let responses = data.get::<SimpleResponses>().unwrap();
-            if responses.iter().any(|(key, _r)| key == keyword) {
-                send_msg("Error: already exists");
-                return;
-            }
-        }
-        let response = words.collect::<Vec<&str>>().join(" ");
-        if response.len() < 1 {
-            send_msg("Error: no response\nSyntax: `!set \"some keywords\" a response");
+        keyword.unwrap()
+    };
+    let response_index = keyword.len() + 3;
+    println!("{}", &body[response_index..]);
+    {
+        let data = ctx.data.read();
+        let responses = data.get::<SimpleResponses>().unwrap();
+        if responses.iter().any(|(key, _r)| key.as_str() == keyword) {
+            send_msg("Error: already exists");
             return;
         }
-
-        println!("before db\nkeyword: {}\nresponse: {}", keyword, response);
-        add_response(&ctx, keyword, &response);
-
-        send_msg(&format!("{} => {} - successfully set", &keyword, &response))
     }
+    let response = &body[response_index..].to_string();
+
+    println!("before db\nkeyword: {}\nresponse: {}", keyword, response);
+    add_response(&ctx, keyword, &response);
+
+    send_msg(&format!("{} => {} - successfully set", &keyword, &response))
 }
 
 fn add_response(ctx: &Context, keyword: &str, response: &str) {
@@ -261,5 +267,5 @@ fn add_response(ctx: &Context, keyword: &str, response: &str) {
     }
 
     let responses = data.get_mut::<SimpleResponses>().unwrap();
-    responses.push((keyword.to_string(), response.to_string()));
+    responses.push((Regex::new(keyword).unwrap(), response.to_string()));
 }
