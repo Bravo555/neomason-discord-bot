@@ -219,13 +219,13 @@ fn send_msg(text: &str, msg: &Message, ctx: &Context) {
 fn set(ctx: &Context, msg: &Message, body: &str) {
     let send_msg = |text| send_msg(text, &msg, &ctx);
 
-    let keyword = if body.starts_with("\"") {
+    let (keyword, i) = if body.starts_with("\"") {
         // keyword enclosed with quotation marks
         let reg = Regex::new("^\"(.*)\"").unwrap();
         let captures = reg.captures(body).unwrap().unwrap();
-        let keyword = captures.get(1).unwrap();
+        let keyword = captures.get(1).unwrap().as_str();
 
-        keyword.as_str()
+        (keyword, keyword.len() + 3)
     } else {
         let mut words = body.split_whitespace();
         // just split by whitespace
@@ -234,11 +234,11 @@ fn set(ctx: &Context, msg: &Message, body: &str) {
             send_msg("Error: no keyword\nSyntax: `!set \"some keywords\" a response");
             return;
         };
+        let keyword = keyword.unwrap();
 
-        keyword.unwrap()
+        (keyword, keyword.len() + 1)
     };
-    let response_index = keyword.len() + 3;
-    println!("{}", &body[response_index..]);
+    println!("{}", &body[i..]);
     {
         let data = ctx.data.read();
         let responses = data.get::<SimpleResponses>().unwrap();
@@ -247,7 +247,7 @@ fn set(ctx: &Context, msg: &Message, body: &str) {
             return;
         }
     }
-    let response = &body[response_index..].to_string();
+    let response = &body[i..].to_string();
 
     println!("before db\nkeyword: {}\nresponse: {}", keyword, response);
     add_response(&ctx, keyword, &response);
