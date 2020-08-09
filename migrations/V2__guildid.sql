@@ -1,10 +1,4 @@
 ALTER TABLE users
-RENAME COLUMN id TO userid;
-ALTER TABLE users
-ADD COLUMN guildid NOT NULL DEFAULT 223923153691344897;
-ALTER TABLE responses
-ADD COLUMN guildid NOT NULL DEFAULT 223923153691344897;
-ALTER TABLE users
     RENAME TO users_;
 ALTER TABLE responses
     RENAME TO responses_;
@@ -23,14 +17,14 @@ CREATE TABLE responses (
     CONSTRAINT keyword_response UNIQUE(keyword, response)
 );
 INSERT INTO users(userid, guildid, based)
-SELECT userid,
-    based,
-    guildid
+SELECT id,
+    223923153691344897,
+    based
 FROM users_;
 INSERT INTO responses(guildid, keyword, response)
-SELECT keyword,
-    response,
-    guildid
+SELECT 223923153691344897,
+    keyword,
+    response
 FROM responses_;
 DROP TABLE users_;
 DROP TABLE responses_;
