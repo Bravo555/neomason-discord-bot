@@ -189,7 +189,7 @@ fn main() {
     migrations::migrations::runner().run(&mut db).unwrap();
 
     let responses: Vec<SimpleResponse> = {
-        let mut responses_query = db.prepare("SELECT * FROM responses").unwrap();
+        let mut responses_query = db.prepare("SELECT keyword, response, guildid FROM responses").unwrap();
         responses_query
             .query_map(NO_PARAMS, |row| {
                 Ok((
