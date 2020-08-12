@@ -23,20 +23,13 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
-        run: cargo build --verbose
-      - name: Run tests
-        run: cargo test --verbose
-      - name: Build release binary
-        run: cargo build --release
+
       - name: Import the SSH key
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
+          eval $(ssh-agent -s)
           ssh-agent bash
-          ssh-add <(echo "$SSH_KEY")
-          ssh-add -l
-      - name: Deploy the binary
-        run: |
-          scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-$(date +"%FT%T")
-          ssh neomason-bot@mguzik.pl ~/run.sh
+            ssh-add <(echo "$SSH_KEY")
+            scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-$(date +"%FT%T")
+            ssh neomason-bot@mguzik.pl ~/run.sh
