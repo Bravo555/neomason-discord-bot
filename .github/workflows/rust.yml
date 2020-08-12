@@ -31,7 +31,7 @@ jobs:
           eval $(ssh-agent -s)
           ssh-agent bash
             ssh-add <(echo "$SSH_KEY")
-            mkdir .ssh && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+            mkdir ~/.ssh && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
             ssh-add -l
             scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-$(date +"%FT%T")
             ssh neomason-bot@mguzik.pl ~/run.sh
