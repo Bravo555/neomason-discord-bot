@@ -33,7 +33,7 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
-          eval $(ssh-agent -s)
+          ssh-agent bash
           ssh-add <(echo "$SSH_KEY")
           ssh-add -l
       - name: Deploy the binary
