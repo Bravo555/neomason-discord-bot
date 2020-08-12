@@ -28,7 +28,7 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Build release binary
-        run: cargo run --release
+        run: cargo build --release
       - name: Import the SSH key
         run: |
           eval $(ssh-agent -s) 
