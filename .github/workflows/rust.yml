@@ -30,8 +30,10 @@ jobs:
       - name: Build release binary
         run: cargo build --release
       - name: Import the SSH key
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
-          eval $(ssh-agent -s) 
+          eval $(ssh-agent -s)
           ssh-add <(echo "$SSH_KEY")
           ssh-add -l
       - name: Deploy the binary
