@@ -29,6 +29,19 @@ jobs:
         run: cargo test --verbose
       - name: Build release binary
         run: cargo build --release
+      - name: Save build artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: neomason-bin
+          path: target/release/neomason-discord-bot
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+      - name: Fetch the binary
+        uses: actions/download-artifact@v2
+        with:
+          name: neomason-bin
       - name: Deploy the binary
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
@@ -38,5 +51,5 @@ jobs:
             ssh-add <(echo "$SSH_KEY")
             mkdir ~/.ssh && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
             ssh-add -l
-            scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-current
+            scp neomason-discord-bot neomason-bot@mguzik.pl:neomason-current
             ssh neomason-bot@mguzik.pl "~/run.sh"
