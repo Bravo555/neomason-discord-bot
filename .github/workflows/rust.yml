@@ -29,7 +29,7 @@ jobs:
         run: cargo test --verbose
       - name: Build release binary
         run: cargo build --release
-      - name: Import the SSH key
+      - name: Deploy the binary
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
@@ -38,5 +38,5 @@ jobs:
             ssh-add <(echo "$SSH_KEY")
             mkdir ~/.ssh && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
             ssh-add -l
-            scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-$(date +"%FT%T")
+            scp target/release/neomason-discord-bot neomason-bot@mguzik.pl:neomason-current
             ssh neomason-bot@mguzik.pl "~/run.sh"
