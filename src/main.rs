@@ -179,17 +179,24 @@ impl EventHandler for Handler {
 }
 
 fn main() {
+    const DB_NAME_DEFAULT: &str = "neomason.db";
+
     env_logger::init();
     dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("discord token missing");
-    let db_name = env::var("DB_NAME").expect("db name missing");
+    let db_name = env::var("DB_NAME").unwrap_or_else(|_| {
+        warn!("DB name not provided, using default: {}", DB_NAME_DEFAULT);
+        DB_NAME_DEFAULT.into()
+    });
 
     let mut db = db::Connection::open(db_name).unwrap();
     migrations::migrations::runner().run(&mut db).unwrap();
 
     let responses: Vec<SimpleResponse> = {
-        let mut responses_query = db.prepare("SELECT keyword, response, guildid FROM responses").unwrap();
+        let mut responses_query = db
+            .prepare("SELECT keyword, response, guildid FROM responses")
+            .unwrap();
         responses_query
             .query_map(NO_PARAMS, |row| {
                 Ok((
