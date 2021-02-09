@@ -719,7 +719,6 @@ dependencies = [
  "fancy-regex",
  "log",
  "refinery",
- "regex",
  "rusqlite",
  "serenity",
 ]

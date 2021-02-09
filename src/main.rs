@@ -186,7 +186,7 @@ impl EventHandler for Handler {
 
         thread::spawn(move || loop {
             let now = Local::now().time();
-            if (now.hour(), now.minute()) == (20, 10) {
+            if (now.hour(), now.minute()) == (21, 37) {
                 let guilds = ctx
                     .http()
                     .get_guilds(&GuildPagination::After(GuildId(0)), 10)
@@ -199,7 +199,7 @@ impl EventHandler for Handler {
                         channel.say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE").unwrap();
                     }
                 }
-                thread::sleep(Duration::from_secs(30));
+                thread::sleep(Duration::from_secs(60));
             }
             thread::sleep(Duration::from_secs(10));
         });
