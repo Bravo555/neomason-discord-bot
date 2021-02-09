@@ -4,18 +4,25 @@ use fancy_regex::Regex;
 use log::*;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
-use serenity::client::Client;
-use serenity::model::{
-    channel::Message,
-    gateway::Ready,
-    id::{GuildId, UserId},
+use serenity::{client::Client, http::CacheHttp};
+use serenity::{
+    http::GuildPagination,
+    model::{
+        channel::Message,
+        gateway::Ready,
+        id::{GuildId, UserId},
+    },
 };
-use serenity::prelude::*;
+use serenity::{model::id::ChannelId, prelude::*};
 use std::{
     convert::TryInto,
     env,
     sync::{Arc, Mutex},
+    thread,
+    time::Duration,
 };
+
+use chrono::prelude::*;
 
 type SimpleResponse = (Regex, String, u64);
 
@@ -173,8 +180,29 @@ impl EventHandler for Handler {
         };
     }
 
-    fn ready(&self, _: Context, ready: Ready) {
+    fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        let ctx = ctx.clone();
+
+        thread::spawn(move || loop {
+            let now = Local::now().time();
+            if (now.hour(), now.minute()) == (1, 30) {
+                let guilds = ctx
+                    .http()
+                    .get_guilds(&GuildPagination::After(GuildId(0)), 10)
+                    .unwrap();
+                for guild in guilds {
+                    let channels = guild.id.channels(&ctx).unwrap();
+                    // channel id for inner lodge text wall
+                    if let Some(channel) = channels.get(&ChannelId(707309997884833835)) {
+                        info!("posting message");
+                        channel.say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE").unwrap();
+                    }
+                }
+                thread::sleep(Duration::from_secs(5 * 60));
+            }
+            thread::sleep(Duration::from_secs(30));
+        });
     }
 }
 
