@@ -186,7 +186,7 @@ impl EventHandler for Handler {
 
         thread::spawn(move || loop {
             let now = Local::now().time();
-            if (now.hour(), now.minute()) == (1, 30) {
+            if (now.hour(), now.minute()) == (20, 10) {
                 let guilds = ctx
                     .http()
                     .get_guilds(&GuildPagination::After(GuildId(0)), 10)
@@ -194,23 +194,23 @@ impl EventHandler for Handler {
                 for guild in guilds {
                     let channels = guild.id.channels(&ctx).unwrap();
                     // channel id for inner lodge text wall
-                    if let Some(channel) = channels.get(&ChannelId(707309997884833835)) {
+                    if let Some(channel) = channels.values().find(|&c| c.name() == "inner-lodge-text-wall") {
                         info!("posting message");
                         channel.say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE").unwrap();
                     }
                 }
-                thread::sleep(Duration::from_secs(5 * 60));
+                thread::sleep(Duration::from_secs(30));
             }
-            thread::sleep(Duration::from_secs(30));
+            thread::sleep(Duration::from_secs(10));
         });
     }
 }
 
 fn main() {
-    const DB_NAME_DEFAULT: &str = "neomason.db";
-
-    env_logger::init();
     dotenv().ok();
+    env_logger::init();
+
+    const DB_NAME_DEFAULT: &str = "neomason.db";
 
     let token = env::var("DISCORD_TOKEN").expect("discord token missing");
     let db_name = env::var("DB_NAME").unwrap_or_else(|_| {
@@ -238,7 +238,6 @@ fn main() {
             .filter_map(|r| r.ok())
             .collect()
     };
-    println!("{:?}", responses);
 
     let mut client = Client::new(&token, Handler).expect("error creating client");
 
