@@ -199,7 +199,7 @@ impl EventHandler for Handler {
                         channel.say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE").unwrap();
                     }
                 }
-                thread::sleep(Duration::from_secs(60));
+                thread::sleep(Duration::from_secs(2 * 60));
             }
             thread::sleep(Duration::from_secs(10));
         });
