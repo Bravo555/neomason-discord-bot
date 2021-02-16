@@ -77,14 +77,18 @@ impl EventHandler for Handler {
         match msg.content.as_str() {
             "based" => {
                 let mut data = ctx.data.write();
-                let prev_id = data
-                    .get::<LastMessage>()
-                    .unwrap()
-                    .as_ref()
-                    .map(|msg| msg.author.id.clone())
-                    .unwrap();
+                let target = if msg.mentions.len() == 1 {
+                    msg.mentions.get(0).unwrap()
+                } else {
+                    data.get::<LastMessage>()
+                        .unwrap()
+                        .as_ref()
+                        .map(|msg| &msg.author)
+                        .unwrap()
+                }
+                .clone();
 
-                if prev_id == msg.author.id {
+                if target.id == msg.author.id {
                     send_msg("You can't increase your own based score!", &msg, &ctx);
                     return;
                 }
@@ -95,24 +99,16 @@ impl EventHandler for Handler {
                     db.execute(
                         "INSERT INTO users (userid, guildid, based) VALUES (?1, ?2, ?3)
                         ON CONFLICT(userid, guildid) DO UPDATE SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
-                        params![i64::from(prev_id), i64::from(guildid), 0],
+                        params![i64::from(target.id), i64::from(guildid), 1],
                     )
                     .unwrap();
-                    // db.execute(
-                    //     "UPDATE users SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
-                    //     params![i64::from(prev_id), i64::from(guildid)],
-                    // )
-                    // .unwrap();
                 }
 
-                let prev = data.get::<LastMessage>().unwrap();
-                if let Some(prev) = prev {
-                    let m = format!(
-                        "{} is now more based",
-                        prev.author_nick(&ctx).unwrap_or(prev.author.name.clone())
-                    );
-                    send_msg(&m, &msg, &ctx);
-                }
+                let nick = target
+                    .nick_in(&ctx, msg.guild_id.unwrap())
+                    .unwrap_or(target.name);
+                let m = format!("{} is now more based", nick);
+                send_msg(&m, &msg, &ctx);
             }
             "!basedstats" => {
                 let data = ctx.data.read();
