@@ -4,6 +4,7 @@ use fancy_regex::Regex;
 use log::*;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
+use serenity::prelude::*;
 use serenity::{client::Client, http::CacheHttp};
 use serenity::{
     http::GuildPagination,
@@ -13,7 +14,6 @@ use serenity::{
         id::{GuildId, UserId},
     },
 };
-use serenity::{model::id::ChannelId, prelude::*};
 use std::{
     convert::TryInto,
     env,
@@ -78,14 +78,21 @@ impl EventHandler for Handler {
             "based" => {
                 let mut data = ctx.data.write();
                 let target = if msg.mentions.len() == 1 {
-                    msg.mentions.get(0).unwrap()
+                    msg.mentions.get(0).map(|u| u.clone())
+                } else if let Some(ref ref_msg) = msg.message_reference {
+                    ref_msg
+                        .channel_id
+                        // should never return `None` because we're checking for it
+                        .message(&ctx, ref_msg.message_id.unwrap())
+                        .map(|m| m.author)
+                        .ok()
                 } else {
                     data.get::<LastMessage>()
                         .unwrap()
-                        .as_ref()
-                        .map(|msg| &msg.author)
-                        .unwrap()
+                        .clone()
+                        .map(|msg| msg.author)
                 }
+                .unwrap()
                 .clone();
 
                 if target.id == msg.author.id {
@@ -96,19 +103,55 @@ impl EventHandler for Handler {
                 {
                     let db = data.get_mut::<DbContainer>().unwrap().lock().unwrap();
                     let guildid = msg.guild_id.unwrap();
-                    db.execute(
-                        "INSERT INTO users (userid, guildid, based) VALUES (?1, ?2, ?3)
-                        ON CONFLICT(userid, guildid) DO UPDATE SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
+                    // TODO: replace with `returning` clause once server has appropriate sqlite version
+                    if let Err(err) = db.execute(
+                        "INSERT INTO users (userid, guildid, based) VALUES (?1, ?2, ?3) ON CONFLICT(userid, guildid) DO UPDATE SET based = based + 1 WHERE userid = (?1) AND guildid = (?2)",
                         params![i64::from(target.id), i64::from(guildid), 1],
-                    )
-                    .unwrap();
-                }
+                    ) {
+                        send_msg(&format!("Error: can't increase based score\nReason:{:?}", err), &msg, &ctx);
+                        return;
+                    }
 
-                let nick = target
-                    .nick_in(&ctx, msg.guild_id.unwrap())
-                    .unwrap_or(target.name);
-                let m = format!("{} is now more based", nick);
-                send_msg(&m, &msg, &ctx);
+                    let mut stmt = db
+                        .prepare("SELECT based FROM users WHERE userid = (?1) AND guildid = (?2)")
+                        .unwrap();
+
+                    let mut rows = stmt
+                        .query_and_then(params![i64::from(target.id), i64::from(guildid)], |r| {
+                            r.get::<usize, i64>(0)
+                        })
+                        .unwrap();
+                    let based = match rows.next() {
+                        Some(s) => match s {
+                            Ok(res) => res,
+                            Err(err) => {
+                                send_msg(
+                                    &format!(
+                                        "Error: error retrieving based count! reason: {:?}",
+                                        err
+                                    ),
+                                    &msg,
+                                    &ctx,
+                                );
+                                return;
+                            }
+                        },
+                        None => {
+                            send_msg(&format!("Error: user not found"), &msg, &ctx);
+                            return;
+                        }
+                    };
+
+                    let nick = target
+                        .nick_in(&ctx, msg.guild_id.unwrap())
+                        .unwrap_or(target.name);
+
+                    let m = format!(
+                        "{} is now more based. Their based score is now: {}",
+                        nick, based
+                    );
+                    send_msg(&m, &msg, &ctx);
+                }
             }
             "!basedstats" => {
                 let data = ctx.data.read();
@@ -145,22 +188,23 @@ impl EventHandler for Handler {
             }
             "!list" => {
                 // TODO: say something when the list is empty instead of displaying awkward black box
+                // TODO: replace old embed code with new widget from v8 API
                 let data = ctx.data.read();
                 let responses = data.get::<SimpleResponses>().unwrap();
 
-                msg.channel_id
-                    .send_message(&ctx, |f| {
-                        f.embed(|e| {
-                            let description = responses
-                                .iter()
-                                .filter(|(_, _, guildid)| msg.guild_id.unwrap().as_u64() == guildid)
-                                .map(|(key, resp, _)| format!("{} => {}", key.as_str(), resp))
-                                .collect::<Vec<String>>()
-                                .join("\n");
-                            e.description(description)
-                        })
-                    })
-                    .unwrap();
+                let text = responses
+                    .iter()
+                    .filter(|(_, _, guildid)| msg.guild_id.unwrap().as_u64() == guildid)
+                    .map(|(key, resp, _)| format!("{} => {}", key.as_str(), resp))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                let text = if let "" = text.as_str() {
+                    "No responses yet! Add some using `!set` command".to_string()
+                } else {
+                    text
+                };
+
+                msg.channel_id.say(&ctx, text).unwrap();
             }
             _ if msg.content.starts_with("!set ") => {
                 let body = &msg.content["!set ".len()..];
@@ -190,7 +234,10 @@ impl EventHandler for Handler {
                 for guild in guilds {
                     let channels = guild.id.channels(&ctx).unwrap();
                     // channel id for inner lodge text wall
-                    if let Some(channel) = channels.values().find(|&c| c.name() == "inner-lodge-text-wall") {
+                    if let Some(channel) = channels
+                        .values()
+                        .find(|&c| c.name() == "inner-lodge-text-wall")
+                    {
                         info!("posting message");
                         channel.say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE").unwrap();
                     }

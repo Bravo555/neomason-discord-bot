@@ -8,7 +8,7 @@ dotenv = "0.15.0"
 env_logger = "*"
 rusqlite = "0.23.1"
 fancy-regex = "0.3.5"
-serenity = "0.8.6"
+serenity = "0.8.9"
 log = "0.4"
 chrono = "0.4.19"
 
