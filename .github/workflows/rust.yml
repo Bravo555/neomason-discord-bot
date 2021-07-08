@@ -23,8 +23,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run tests
-        run: cargo test --verbose
       - name: Build release binary
         run: cargo build --release --verbose
       - name: Save build artifacts
