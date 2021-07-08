@@ -51,4 +51,4 @@ jobs:
             mkdir ~/.ssh && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
             ssh-add -l
             rsync neomason-discord-bot neomason-bot@mguzik.pl:neomason-current
-            ssh neomason-bot@mguzik.pl "~/run.sh"
+            ssh neomason-bot@mguzik.pl "sudo /bin/systemctl restart neomason-discord-bot"
