@@ -4,6 +4,7 @@ use fancy_regex::Regex;
 use log::*;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
+use serenity::http::AttachmentType;
 use serenity::prelude::*;
 use serenity::{client::Client, http::CacheHttp};
 use serenity::{
@@ -59,7 +60,7 @@ impl EventHandler for Handler {
             return;
         }
 
-        println!("got message {}", msg.content);
+        println!("got message {:?}", msg);
 
         {
             let data = ctx.data.read();
@@ -75,6 +76,26 @@ impl EventHandler for Handler {
         }
 
         match msg.content.as_str() {
+            "gank" => {
+                let channels = msg.guild_id.unwrap().channels(&ctx).unwrap();
+                let gank_channel = channels
+                    .values()
+                    .find(|channel| channel.name() == "national-gank-bureau")
+                    .unwrap();
+
+                let images = gank_channel
+                    .messages(&ctx, |retriever| retriever)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|message| message.attachments.len() != 0)
+                    .next()
+                    .unwrap()
+                    .attachments;
+
+                msg.channel_id
+                    .send_files(&ctx, images.iter().map(|a| a.url.as_str()), |a| a)
+                    .unwrap();
+            }
             "based" => {
                 let mut data = ctx.data.write();
                 let target = if msg.mentions.len() == 1 {
