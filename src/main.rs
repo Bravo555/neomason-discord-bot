@@ -60,7 +60,7 @@ impl EventHandler for Handler {
             return;
         }
 
-        println!("got message {:?}", msg);
+        info!("got message {:?}", msg);
 
         {
             let data = ctx.data.read();
@@ -298,10 +298,13 @@ fn main() {
                 ))
             })
             .unwrap()
-            .map(|response| response.map(|(k, r, id)| (Regex::new(&k).unwrap(), r, id)))
+            .map(|response| {
+                response.map(|(k, r, id)| (Regex::new(&format!(r"\b{}\b", &k)).unwrap(), r, id))
+            })
             .filter_map(|r| r.ok())
             .collect()
     };
+    info!("loaded responses: {:?}", responses);
 
     let mut client = Client::new(&token, Handler).expect("error creating client");
 
@@ -374,7 +377,7 @@ fn add_response(ctx: &Context, keyword: &str, response: &str, guildid: GuildId) 
 
     let responses = data.get_mut::<SimpleResponses>().unwrap();
     responses.push((
-        Regex::new(keyword).unwrap(),
+        Regex::new(&format!(r"\b{}\b", keyword)).unwrap(),
         response.to_string(),
         guildid.into(),
     ));
