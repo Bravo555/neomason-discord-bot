@@ -2,9 +2,9 @@ use dotenv::dotenv;
 use env_logger;
 use fancy_regex::Regex;
 use log::*;
+use rand::prelude::*;
 use rusqlite as db;
 use rusqlite::{params, NO_PARAMS};
-use serenity::http::AttachmentType;
 use serenity::prelude::*;
 use serenity::{client::Client, http::CacheHttp};
 use serenity::{
@@ -88,7 +88,7 @@ impl EventHandler for Handler {
                     .unwrap()
                     .into_iter()
                     .filter(|message| message.attachments.len() != 0)
-                    .next()
+                    .choose(&mut thread_rng())
                     .unwrap()
                     .attachments;
 
