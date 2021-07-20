@@ -35,10 +35,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: Announce deploy
+        env:
+          DISCORD_TOKEN: ${{ secrets.BOT_DISCORD_TOKEN }}
+          CHANNEL_ID: ${{ secrets.ANNOUNCEMENT_CHANNEL_ID }}
+        run: |
+          curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\nTODO: Changelog be here"}'
+
       - name: Fetch the binary
         uses: actions/download-artifact@v2
         with:
           name: neomason-bin
+
       - name: Deploy the binary
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
