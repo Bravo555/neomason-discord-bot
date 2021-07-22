@@ -126,25 +126,27 @@ impl EventHandler for Handler {
             .unwrap();
 
         task::spawn(async move {
-            let now = Local::now().time();
-            if (now.hour(), now.minute()) == (21, 37) {
-                for guild in guilds {
-                    let channels = guild.id.channels(&ctx).await.unwrap();
-                    // channel id for inner lodge text wall
-                    if let Some(channel) = channels
-                        .values()
-                        .find(|&c| c.name() == "inner-lodge-text-wall")
-                    {
-                        info!("posting message");
-                        channel
-                            .say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE")
-                            .await
-                            .unwrap();
+            loop {
+                let now = Local::now().time();
+                if (now.hour(), now.minute()) == (21, 37) {
+                    for guild in guilds {
+                        let channels = guild.id.channels(&ctx).await.unwrap();
+                        // channel id for inner lodge text wall
+                        if let Some(channel) = channels
+                            .values()
+                            .find(|&c| c.name() == "inner-lodge-text-wall")
+                        {
+                            info!("posting message");
+                            channel
+                                .say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE")
+                                .await
+                                .unwrap();
+                        }
                     }
+                    time::sleep(Duration::from_secs(2 * 60)).await;
                 }
-                time::sleep(Duration::from_secs(2 * 60)).await;
+                time::sleep(Duration::from_secs(10)).await;
             }
-            time::sleep(Duration::from_secs(10)).await;
         });
     }
 }
