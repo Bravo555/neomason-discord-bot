@@ -23,12 +23,6 @@ use chrono::prelude::*;
 
 type SimpleResponse = (Regex, String, u64);
 
-struct LastMessage;
-
-impl TypeMapKey for LastMessage {
-    type Value = Option<Message>;
-}
-
 struct DbContainer;
 
 impl TypeMapKey for DbContainer {
@@ -107,11 +101,6 @@ impl EventHandler for Handler {
                 let guildid = msg.guild_id.unwrap();
                 set(&ctx, &msg, body, guildid).await;
             }
-            _ if !msg.content.starts_with("!") => {
-                let mut data = ctx.data.write().await;
-                let last_msg = data.get_mut::<LastMessage>().unwrap();
-                last_msg.replace(msg.clone());
-            }
             _ => (),
         };
     }
@@ -129,7 +118,7 @@ impl EventHandler for Handler {
             loop {
                 let now = Local::now().time();
                 if (now.hour(), now.minute()) == (21, 37) {
-                    for guild in guilds {
+                    for guild in &guilds {
                         let channels = guild.id.channels(&ctx).await.unwrap();
                         // channel id for inner lodge text wall
                         if let Some(channel) = channels
@@ -200,7 +189,6 @@ async fn main() {
         let mut data = client.data.write().await;
         data.insert::<DbContainer>(Arc::new(Mutex::new(db)));
         data.insert::<SimpleResponses>(responses);
-        data.insert::<LastMessage>(None);
     }
 
     client
@@ -285,10 +273,7 @@ async fn based(ctx: &Context, msg: Message) {
             .map(|m| m.author)
             .ok()
     } else {
-        data.get::<LastMessage>()
-            .unwrap()
-            .clone()
-            .map(|msg| msg.author)
+        return;
     }
     .unwrap()
     .clone();
