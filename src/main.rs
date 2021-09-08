@@ -127,7 +127,7 @@ impl EventHandler for Handler {
                         {
                             info!("posting message");
                             channel
-                                .say(&ctx, "NIE MA PODZIAŁÓW W WATYKANIE")
+                                .say(&ctx, "NIE MA WOLNOŚCI W PANOPTYKONIE")
                                 .await
                                 .unwrap();
                         }
