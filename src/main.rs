@@ -385,7 +385,8 @@ async fn gank(ctx: &Context, msg: Message) {
     let channels = msg.guild_id.unwrap().channels(&ctx).await.unwrap();
     let gank_channel = channels
         .values()
-        .find(|channel| channel.name() == "dank_memez")
+        // TODO: FIX THE GODDAMN HARDCODED CONFIG
+        .find(|channel| channel.name() == "national-gank-bureau")
         .unwrap();
 
     let images = gank_channel
