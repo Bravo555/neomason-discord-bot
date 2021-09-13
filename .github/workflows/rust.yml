@@ -35,9 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-        - name: Get Git Log
-          id: git_log
-          uses: JantHsueh/get-git-log-action@1.0
+      - name: Get Git Log
+        id: git_log
+        uses: JantHsueh/get-git-log-action@1.0
 
       - name: Announce deploy
         env:
