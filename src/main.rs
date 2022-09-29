@@ -97,6 +97,10 @@ impl EventHandler for Handler {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+
+        let data = ctx.data.read().await;
+        let simple_responses = data.get::<SimpleResponses>().unwrap();
+
         let ctx = ctx.clone();
         let guilds = ctx
             .http()
@@ -120,7 +124,8 @@ impl EventHandler for Handler {
                                 .name("listresponses")
                                 .description("Wypisz odpowiedzi")
                         }).create_application_command(|command| {
-                            command.name("setresp")
+                            command
+                                .name("setresp")
                                 .description("Dodaj nową odpowiedź")
                                 .create_option(|option| {
                                     option
@@ -135,6 +140,24 @@ impl EventHandler for Handler {
                                         .kind(CommandOptionType::String)
                                         .name("odpowiedz")
                                         .description("Bot odpowie tym tekstem")
+                                })
+                        }).create_application_command(|command| {
+                            command
+                                .name("delresp")
+                                .description("Usuń istniejącą odpowiedź")
+                                .create_option(|option| {
+                                    let option = option
+                                        .kind(CommandOptionType::String)
+                                        .required(true)
+                                        .name("fraza")
+                                        .description("Usuń odpowiedź na tą frazę");
+
+                                    for (regex, _, _) in simple_responses {
+                                        let keyword = regex.as_str().replace("\\b", "");
+                                        option.add_string_choice(&keyword, regex);
+                                    }
+
+                                    option
                                 })
                         })
                 })
@@ -190,6 +213,21 @@ impl EventHandler for Handler {
 
                     add_response(&ctx, keyword, &response, command.guild_id.unwrap()).await;
                     format!("{} => {} - successfully set", keyword, response)
+                }
+                "delresp" => {
+                    let options = &command.data.options;
+
+                    let keyword = options[0].value.as_ref().unwrap();
+                    let keyword = keyword.as_str().unwrap().replace("\\b", "");
+
+                    if remove_response(&ctx, &keyword, command.guild_id.unwrap())
+                        .await
+                        .is_some()
+                    {
+                        format!("{} - successfully removed", keyword)
+                    } else {
+                        format!("{} - taka fraza nie istnieje", keyword)
+                    }
                 }
                 command => unreachable!("Unknown command: {}", command),
             };
@@ -358,6 +396,33 @@ async fn add_response(ctx: &Context, keyword: &str, response: &str, guildid: Gui
         response.to_string(),
         guildid.into(),
     ));
+}
+
+async fn remove_response(ctx: &Context, keyword: &str, guildid: GuildId) -> Option<()> {
+    let mut data = ctx.data.write().await;
+    {
+        let db = data.get_mut::<DbContainer>().unwrap().lock().await;
+        let res = db
+            .execute(
+                "DELETE FROM responses WHERE keyword = ?1 AND guildid = ?2",
+                params![keyword, i64::from(guildid)],
+            )
+            .unwrap();
+        info!("deleted {res} rows");
+    }
+
+    let responses = data.get_mut::<SimpleResponses>().unwrap();
+
+    let keyword = format!("\\b{keyword}\\b");
+    if let Some(pos) = responses
+        .iter()
+        .position(|(regex, _, _)| regex.as_str() == keyword)
+    {
+        responses.remove(pos);
+        Some(())
+    } else {
+        None
+    }
 }
 
 async fn based(ctx: &Context, msg: Message) {
