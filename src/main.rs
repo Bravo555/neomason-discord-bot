@@ -4,6 +4,8 @@ use fancy_regex::Regex;
 use log::*;
 use rand::prelude::*;
 use rusqlite::{self as db, params};
+use serenity::model::application::interaction::InteractionResponseType;
+use serenity::model::prelude::interaction::Interaction;
 use serenity::prelude::*;
 use serenity::{
     async_trait,
@@ -47,7 +49,7 @@ impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         // TODO: have it ignore all the bots, not only itself
         // probably should use the serenity framework thingy
-        if msg.author.id == ctx.cache.current_user_id().await {
+        if msg.author.id == ctx.cache.current_user_id() {
             return;
         }
 
@@ -56,7 +58,9 @@ impl EventHandler for Handler {
         {
             let data = ctx.data.read().await;
             let simple_responses = data.get::<SimpleResponses>().unwrap();
+            info!("{simple_responses:#?}");
             let message = msg.content.to_lowercase();
+            info!("{message}");
             for (keyword, response, guildid) in simple_responses {
                 if keyword.is_match(&message).unwrap() && msg.guild_id.unwrap().as_u64() == guildid
                 {
@@ -74,27 +78,12 @@ impl EventHandler for Handler {
                 based(&ctx, msg).await;
             }
             "!basedstats" => {
-                basedstats(&ctx, msg).await;
+                let response = basedstats(&ctx, msg.guild_id.unwrap()).await;
+                send_msg(&response, &msg, &ctx).await;
             }
             "!list" => {
-                // TODO: say something when the list is empty instead of displaying awkward black box
-                // TODO: replace old embed code with new widget from v8 API
-                let data = ctx.data.read().await;
-                let responses = data.get::<SimpleResponses>().unwrap();
-
-                let text = responses
-                    .iter()
-                    .filter(|(_, _, guildid)| msg.guild_id.unwrap().as_u64() == guildid)
-                    .map(|(key, resp, _)| format!("{} => {}", key.as_str(), resp))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-                let text = if let "" = text.as_str() {
-                    "No responses yet! Add some using `!set` command".to_string()
-                } else {
-                    text
-                };
-
-                msg.channel_id.say(&ctx, text).await.unwrap();
+                let response = list_responses(&ctx, msg.guild_id.unwrap()).await;
+                msg.channel_id.say(&ctx, response).await.unwrap();
             }
             _ if msg.content.starts_with("!set ") => {
                 let body = &msg.content["!set ".len()..];
@@ -110,9 +99,30 @@ impl EventHandler for Handler {
         let ctx = ctx.clone();
         let guilds = ctx
             .http()
-            .get_guilds(&GuildPagination::After(GuildId(0)), 10)
+            .get_guilds(Some(&GuildPagination::After(GuildId(0))), Some(10))
             .await
             .unwrap();
+
+        // set up application commands
+        for guild in &guilds {
+            guild
+                .id
+                .set_application_commands(&ctx.http, |commands| {
+                    commands
+                        .create_application_command(|command| {
+                            command
+                                .name("basedstats")
+                                .description("Wypisz najbardziej zbazowanych użytkowników")
+                        })
+                        .create_application_command(|command| {
+                            command
+                                .name("listresponses")
+                                .description("Wypisz odpowiedzi")
+                        })
+                })
+                .await
+                .unwrap();
+        }
 
         task::spawn(async move {
             loop {
@@ -137,6 +147,27 @@ impl EventHandler for Handler {
                 time::sleep(Duration::from_secs(10)).await;
             }
         });
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            let response_content = match command.data.name.as_str() {
+                "basedstats" => basedstats(&ctx, command.guild_id.unwrap()).await,
+                "listresponses" => list_responses(&ctx, command.guild_id.unwrap()).await,
+                command => unreachable!("Unknown command: {}", command),
+            };
+
+            let create_interaction_response =
+                command.create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content(response_content))
+                });
+
+            if let Err(why) = create_interaction_response.await {
+                error!("Cannot respond to slash command: {}", why);
+            }
+        }
     }
 }
 
@@ -179,7 +210,11 @@ async fn main() {
 
     let framework = StandardFramework::new();
 
-    let mut client = Client::builder(&token)
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
         .framework(framework)
         .await
@@ -239,6 +274,34 @@ async fn set(ctx: &Context, msg: &Message, body: &str, guildid: GuildId) {
 
     add_response(&ctx, keyword, &response, guildid).await;
     send_msg(&format!("{} => {} - successfully set", &keyword, &response)).await
+}
+
+async fn list_responses(ctx: &Context, guildid: GuildId) -> String {
+    let data = ctx.data.read().await;
+    let responses = data.get::<SimpleResponses>().unwrap();
+
+    let text = responses
+        .iter()
+        .filter(|(_, _, g)| guildid == *g)
+        .map(|(key, resp, _)| {
+            format!(
+                "{} => {}",
+                key.as_str()
+                    .strip_prefix("\\b")
+                    .and_then(|k| k.strip_suffix("\\b"))
+                    .unwrap_or(""),
+                resp
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+    let text = if let "" = text.as_str() {
+        "No responses yet! Add some using `!set` command".to_string()
+    } else {
+        text
+    };
+
+    text
 }
 
 async fn add_response(ctx: &Context, keyword: &str, response: &str, guildid: GuildId) {
@@ -345,7 +408,7 @@ async fn based(ctx: &Context, msg: Message) {
     send_msg(&m, &msg, &ctx).await;
 }
 
-async fn basedstats(ctx: &Context, msg: Message) {
+async fn basedstats(ctx: &Context, guildid: GuildId) -> String {
     let data = ctx.data.read().await;
     let db = data.get::<DbContainer>().unwrap().lock().await;
     let users = {
@@ -353,7 +416,7 @@ async fn basedstats(ctx: &Context, msg: Message) {
             .prepare("SELECT userid, based FROM users WHERE guildid = (?1) ORDER BY based DESC")
             .unwrap();
         let users = stmt
-            .query_map(params![i64::from(msg.guild_id.unwrap())], |row| {
+            .query_map(params![i64::from(guildid)], |row| {
                 let id: i64 = row.get(0).unwrap();
                 let based: i64 = row.get(1).unwrap();
 
@@ -371,14 +434,11 @@ async fn basedstats(ctx: &Context, msg: Message) {
 
         let userid: UserId = (user.0 as u64).into();
         let user = userid.to_user(&ctx).await.unwrap();
-        let username = user
-            .nick_in(&ctx, &msg.guild_id.unwrap())
-            .await
-            .unwrap_or(user.name);
+        let username = user.nick_in(&ctx, guildid).await.unwrap_or(user.name);
         let user_txt = format!("{}: {}\n", username, based.to_string());
         text.push_str(&user_txt);
     }
-    send_msg(&text, &msg, &ctx).await;
+    text
 }
 
 async fn gank(ctx: &Context, msg: Message) {
