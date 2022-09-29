@@ -5,6 +5,7 @@ use log::*;
 use rand::prelude::*;
 use rusqlite::{self as db, params};
 use serenity::model::application::interaction::InteractionResponseType;
+use serenity::model::prelude::command::CommandOptionType;
 use serenity::model::prelude::interaction::Interaction;
 use serenity::prelude::*;
 use serenity::{
@@ -118,6 +119,23 @@ impl EventHandler for Handler {
                             command
                                 .name("listresponses")
                                 .description("Wypisz odpowiedzi")
+                        }).create_application_command(|command| {
+                            command.name("setresp")
+                                .description("Dodaj nową odpowiedź")
+                                .create_option(|option| {
+                                    option
+                                        .required(true)
+                                        .kind(CommandOptionType::String)
+                                        .name("fraza")
+                                        .description("Bot odpowie jeżeli zobaczy tą frazę w wiadomości od użytkownika")
+                                })
+                                .create_option(|option| {
+                                    option
+                                        .required(true)
+                                        .kind(CommandOptionType::String)
+                                        .name("odpowiedz")
+                                        .description("Bot odpowie tym tekstem")
+                                })
                         })
                 })
                 .await
@@ -154,6 +172,25 @@ impl EventHandler for Handler {
             let response_content = match command.data.name.as_str() {
                 "basedstats" => basedstats(&ctx, command.guild_id.unwrap()).await,
                 "listresponses" => list_responses(&ctx, command.guild_id.unwrap()).await,
+                "setresp" => {
+                    let options = &command.data.options;
+
+                    let mut keyword = "";
+                    let mut response = "";
+
+                    for option in options {
+                        match option.name.as_str() {
+                            "fraza" => keyword = option.value.as_ref().unwrap().as_str().unwrap(),
+                            "odpowiedz" => {
+                                response = option.value.as_ref().unwrap().as_str().unwrap()
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    add_response(&ctx, keyword, &response, command.guild_id.unwrap()).await;
+                    format!("{} => {} - successfully set", keyword, response)
+                }
                 command => unreachable!("Unknown command: {}", command),
             };
 
