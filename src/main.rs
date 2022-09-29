@@ -175,17 +175,12 @@ impl EventHandler for Handler {
                 "setresp" => {
                     let options = &command.data.options;
 
-                    let mut keyword = String::from("");
+                    let mut keyword = "";
                     let mut response = "";
 
                     for option in options {
                         match option.name.as_str() {
-                            "fraza" => {
-                                keyword = format!(
-                                    "\\b{}\\b",
-                                    option.value.as_ref().unwrap().as_str().unwrap()
-                                )
-                            }
+                            "fraza" => keyword = option.value.as_ref().unwrap().as_str().unwrap(),
                             "odpowiedz" => {
                                 response = option.value.as_ref().unwrap().as_str().unwrap()
                             }
@@ -193,7 +188,7 @@ impl EventHandler for Handler {
                         }
                     }
 
-                    add_response(&ctx, &keyword, &response, command.guild_id.unwrap()).await;
+                    add_response(&ctx, keyword, &response, command.guild_id.unwrap()).await;
                     format!("{} => {} - successfully set", keyword, response)
                 }
                 command => unreachable!("Unknown command: {}", command),
