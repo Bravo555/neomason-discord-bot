@@ -1,7 +1,7 @@
 use dotenv::dotenv;
-use env_logger;
+
 use fancy_regex::Regex;
-use log::*;
+use log::{error, info, warn};
 use rand::prelude::*;
 use rusqlite::{self as db, params};
 use serenity::model::application::interaction::InteractionResponseType;
@@ -65,7 +65,7 @@ impl EventHandler for Handler {
             for (keyword, response, guildid) in simple_responses {
                 if keyword.is_match(&message).unwrap() && msg.guild_id.unwrap().as_u64() == guildid
                 {
-                    println!("sending response: {}", response);
+                    println!("sending response: {response}");
                     send_msg(response, &msg, &ctx).await;
                 }
             }
@@ -205,14 +205,14 @@ impl EventHandler for Handler {
                         match option.name.as_str() {
                             "fraza" => keyword = option.value.as_ref().unwrap().as_str().unwrap(),
                             "odpowiedz" => {
-                                response = option.value.as_ref().unwrap().as_str().unwrap()
+                                response = option.value.as_ref().unwrap().as_str().unwrap();
                             }
                             _ => (),
                         }
                     }
 
-                    add_response(&ctx, keyword, &response, command.guild_id.unwrap()).await;
-                    format!("{} => {} - successfully set", keyword, response)
+                    add_response(&ctx, keyword, response, command.guild_id.unwrap()).await;
+                    format!("{keyword} => {response} - successfully set")
                 }
                 "delresp" => {
                     let options = &command.data.options;
@@ -224,9 +224,9 @@ impl EventHandler for Handler {
                         .await
                         .is_some()
                     {
-                        format!("{} - successfully removed", keyword)
+                        format!("{keyword} - successfully removed")
                     } else {
-                        format!("{} - taka fraza nie istnieje", keyword)
+                        format!("{keyword} - taka fraza nie istnieje")
                     }
                 }
                 command => unreachable!("Unknown command: {}", command),
@@ -246,12 +246,12 @@ impl EventHandler for Handler {
     }
 }
 
+const DB_NAME_DEFAULT: &str = "neomason.db";
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     env_logger::init();
-
-    const DB_NAME_DEFAULT: &str = "neomason.db";
 
     let token = env::var("DISCORD_TOKEN").expect("discord token missing");
     let db_name = env::var("DB_NAME").unwrap_or_else(|_| {
@@ -278,7 +278,7 @@ async fn main() {
             .map(|response| {
                 response.map(|(k, r, id)| (Regex::new(&format!(r"\b{}\b", &k)).unwrap(), r, id))
             })
-            .filter_map(|r| r.ok())
+            .filter_map(std::result::Result::ok)
             .collect()
     };
     info!("loaded responses: {:?}", responses);
@@ -309,14 +309,14 @@ async fn main() {
 
 async fn send_msg(text: &str, msg: &Message, ctx: &Context) {
     if let Err(e) = msg.channel_id.say(&ctx, text).await {
-        println!("cant send message: {}", e);
+        println!("cant send message: {e}");
     }
 }
 
 async fn set(ctx: &Context, msg: &Message, body: &str, guildid: GuildId) {
-    let send_msg = |text| send_msg(text, &msg, &ctx);
+    let send_msg = |text| send_msg(text, msg, ctx);
 
-    let (keyword, i) = if body.starts_with("\"") {
+    let (keyword, i) = if body.starts_with('\"') {
         // keyword enclosed with quotation marks
         let reg = Regex::new("^\"(.*)\"").unwrap();
         let captures = reg.captures(body).unwrap().unwrap();
@@ -327,7 +327,7 @@ async fn set(ctx: &Context, msg: &Message, body: &str, guildid: GuildId) {
         let mut words = body.split_whitespace();
         // just split by whitespace
         let keyword = words.next();
-        if let None = keyword {
+        if keyword.is_none() {
             send_msg("Error: no keyword\nSyntax: `!set \"some keywords\" a response").await;
             return;
         };
@@ -347,8 +347,8 @@ async fn set(ctx: &Context, msg: &Message, body: &str, guildid: GuildId) {
     }
     let response = &body[i..].to_string();
 
-    add_response(&ctx, keyword, &response, guildid).await;
-    send_msg(&format!("{} => {} - successfully set", &keyword, &response)).await
+    add_response(ctx, keyword, response, guildid).await;
+    send_msg(&format!("{} => {} - successfully set", &keyword, &response)).await;
 }
 
 async fn list_responses(ctx: &Context, guildid: GuildId) -> String {
@@ -392,7 +392,7 @@ async fn add_response(ctx: &Context, keyword: &str, response: &str, guildid: Gui
 
     let responses = data.get_mut::<SimpleResponses>().unwrap();
     responses.push((
-        Regex::new(&format!(r"\b{}\b", keyword)).unwrap(),
+        Regex::new(&format!(r"\b{keyword}\b")).unwrap(),
         response.to_string(),
         guildid.into(),
     ));
@@ -428,7 +428,7 @@ async fn remove_response(ctx: &Context, keyword: &str, guildid: GuildId) -> Opti
 async fn based(ctx: &Context, msg: Message) {
     let mut data = ctx.data.write().await;
     let target = if msg.mentions.len() == 1 {
-        msg.mentions.get(0).map(|u| u.clone())
+        msg.mentions.get(0).cloned()
     } else if let Some(ref ref_msg) = msg.message_reference {
         ref_msg
             .channel_id
@@ -444,7 +444,7 @@ async fn based(ctx: &Context, msg: Message) {
     .clone();
 
     if target.id == msg.author.id {
-        send_msg("You can't increase your own based score!", &msg, &ctx).await;
+        send_msg("You can't increase your own based score!", &msg, ctx).await;
         return;
     }
 
@@ -458,9 +458,9 @@ async fn based(ctx: &Context, msg: Message) {
                     );
         if let Err(err) = increase_score_result {
             send_msg(
-                &format!("Error: can't increase based score\nReason:{:?}", err),
+                &format!("Error: can't increase based score\nReason:{err:?}"),
                 &msg,
-                &ctx,
+                ctx,
             )
             .await;
             return;
@@ -479,23 +479,22 @@ async fn based(ctx: &Context, msg: Message) {
         rows.collect::<Vec<_>>()
     };
 
-    let based = match rows.pop() {
-        Some(s) => match s {
+    let based = if let Some(s) = rows.pop() {
+        match s {
             Ok(res) => res,
             Err(err) => {
                 send_msg(
-                    &format!("Error: error retrieving based count! reason: {:?}", err),
+                    &format!("Error: error retrieving based count! reason: {err:?}"),
                     &msg,
-                    &ctx,
+                    ctx,
                 )
                 .await;
                 return;
             }
-        },
-        None => {
-            send_msg(&format!("Error: user not found"), &msg, &ctx).await;
-            return;
         }
+    } else {
+        send_msg("Error: user not found", &msg, ctx).await;
+        return;
     };
 
     let nick = target
@@ -503,11 +502,8 @@ async fn based(ctx: &Context, msg: Message) {
         .await
         .unwrap_or(target.name);
 
-    let m = format!(
-        "{} is now more based. Their based score is now: {}",
-        nick, based
-    );
-    send_msg(&m, &msg, &ctx).await;
+    let m = format!("{nick} is now more based. Their based score is now: {based}");
+    send_msg(&m, &msg, ctx).await;
 }
 
 async fn basedstats(ctx: &Context, guildid: GuildId) -> String {
@@ -537,7 +533,7 @@ async fn basedstats(ctx: &Context, guildid: GuildId) -> String {
         let userid: UserId = (user.0 as u64).into();
         let user = userid.to_user(&ctx).await.unwrap();
         let username = user.nick_in(&ctx, guildid).await.unwrap_or(user.name);
-        let user_txt = format!("{}: {}\n", username, based.to_string());
+        let user_txt = format!("{username}: {based}\n");
         text.push_str(&user_txt);
     }
     text
@@ -556,7 +552,7 @@ async fn gank(ctx: &Context, msg: Message) {
         .await
         .unwrap()
         .into_iter()
-        .filter(|message| message.attachments.len() != 0)
+        .filter(|message| !message.attachments.is_empty())
         .choose(&mut thread_rng())
         .unwrap()
         .attachments;
@@ -566,7 +562,7 @@ async fn gank(ctx: &Context, msg: Message) {
     // closure has the same lifetime as the attachment, so the closure parameter
     // Hopefully this can be removed once the bug is fixed.
     use serenity::model::channel::Attachment;
-    fn closure<'a>(a: &'a Attachment) -> &'a str {
+    fn closure(a: &Attachment) -> &str {
         a.url.as_str()
     }
 
