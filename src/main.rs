@@ -253,7 +253,7 @@ async fn main() {
     dotenv().ok();
     env_logger::init();
 
-    let token = env::var("DISCORD_TOKEN").expect("discord token missing");
+    let token = env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN env variable missing");
     let db_name = env::var("DB_NAME").unwrap_or_else(|_| {
         warn!("DB name not provided, using default: {}", DB_NAME_DEFAULT);
         DB_NAME_DEFAULT.into()
