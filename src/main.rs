@@ -308,7 +308,7 @@ async fn main() {
 }
 
 async fn send_msg(text: &str, msg: &Message, ctx: &Context) {
-    if let Err(e) = msg.channel_id.say(&ctx, text).await {
+    if let Err(e) = msg.reply(&ctx, text).await {
         println!("cant send message: {e}");
     }
 }
