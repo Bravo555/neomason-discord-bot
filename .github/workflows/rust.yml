@@ -40,9 +40,10 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.BOT_DISCORD_TOKEN }}
           CHANNEL_ID: ${{ secrets.ANNOUNCEMENT_CHANNEL_ID }}
+          OLD_COMMIT_SHA: ${{ github.event.push.before }}
         run: |
-          msg=$(git log --oneline --no-decorate | cut -f2- -d ' ' | head -n1)
-          curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\n'"$msg\"}"
+          msg=$(git log --no-decorate ${OLD_COMMIT_SHA}..)
+          curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\nNew changes:\n\n'"$msg\"}"
 
       - name: Fetch the binary
         uses: actions/download-artifact@v2
