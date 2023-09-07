@@ -172,9 +172,8 @@ impl EventHandler for Handler {
                     for guild in &guilds {
                         let channels = guild.id.channels(&ctx).await.unwrap();
                         // channel id for inner lodge text wall
-                        if let Some(channel) = channels
-                            .values()
-                            .find(|&c| c.name() == "inner-lodge-text-wall")
+                        if let Some(channel) =
+                            channels.values().find(|&c| c.name() == "przegryw-nest")
                         {
                             info!("posting message");
                             channel
