@@ -21,7 +21,7 @@ jobs:
         with:
           toolchain: nightly
           override: true
-            
+
       - uses: actions/cache@v2
         with:
           path: |
@@ -30,8 +30,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - run: git log
+
       - name: Build release binary
         run: cargo build --release --verbose
+        
       - name: Save build artifacts
         uses: actions/upload-artifact@v2
         with:
@@ -43,6 +46,8 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - name: Announce deploy
         env:
           DISCORD_TOKEN: ${{ secrets.BOT_DISCORD_TOKEN }}
