@@ -21,7 +21,7 @@ jobs:
         with:
           toolchain: nightly
           override: true
-            
+
       - uses: actions/cache@v2
         with:
           path: |
@@ -30,8 +30,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - run: git log
+
       - name: Build release binary
         run: cargo build --release --verbose
+        
       - name: Save build artifacts
         uses: actions/upload-artifact@v2
         with:
