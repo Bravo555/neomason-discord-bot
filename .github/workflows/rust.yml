@@ -45,7 +45,9 @@ jobs:
     needs: build
     environment: production
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 100
       - name: Announce deploy
         env:
           DISCORD_TOKEN: ${{ secrets.BOT_DISCORD_TOKEN }}
