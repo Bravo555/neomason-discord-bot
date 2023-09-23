@@ -55,7 +55,7 @@ jobs:
           OLD_COMMIT_SHA: ${{ github.event.before }}
         run: |
           msg=$(git log --no-decorate ${OLD_COMMIT_SHA}..)
-          curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\nNew changes:\n\n' "$msg\"}"
+          curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\nNew changes:\n\n' "$msg" '"}'
 
       - name: Fetch the binary
         uses: actions/download-artifact@v2
