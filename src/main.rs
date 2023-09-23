@@ -1,4 +1,4 @@
-use dotenv::dotenv;
+use dotenvy::dotenv;
 
 use fancy_regex::Regex;
 use log::{error, info, warn};
