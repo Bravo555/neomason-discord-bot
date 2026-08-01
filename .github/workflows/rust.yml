@@ -11,10 +11,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-slim
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 100
 
@@ -24,7 +24,7 @@ jobs:
           toolchain: nightly
           override: true
             
-      - uses: actions/cache@v2
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -35,13 +35,13 @@ jobs:
       - name: Build release binary
         run: cargo build --release --verbose
       - name: Save build artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v7
         with:
           name: neomason-bin
           path: target/release/neomason-discord-bot
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: build
     environment: production
     steps:
@@ -58,7 +58,7 @@ jobs:
           curl https://discord.com/api/channels/${CHANNEL_ID}/messages -H "Authorization: Bot ${DISCORD_TOKEN}" -X POST -H "Content-Type: application/json" -d '{"content": "Deploying new version of the bot...\nNew changes:\n\n'"$msg"'"}'
 
       - name: Fetch the binary
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v8
         with:
           name: neomason-bin
 
