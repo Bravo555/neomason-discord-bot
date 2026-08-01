@@ -552,7 +552,7 @@ async fn gank(ctx: &Context, msg: Message) {
         .unwrap()
         .into_iter()
         .filter(|message| !message.attachments.is_empty())
-        .choose(&mut thread_rng())
+        .choose(&mut rand::rng())
         .unwrap()
         .attachments;
 
